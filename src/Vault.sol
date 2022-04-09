@@ -11,8 +11,7 @@ import {SafeERC20} from "openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol"
 
 import {ICodex} from "fiat/interfaces/ICodex.sol";
 import {ICollybus} from "fiat/interfaces/ICollybus.sol";
-
-import {IVault} from "./interfaces/IVault.sol";
+import {IVault} from "fiat/interfaces/IVault.sol";
 import {Guarded} from "fiat/utils/Guarded.sol";
 import {WAD, toInt256, wmul, wdiv} from "fiat/utils/Math.sol";
 

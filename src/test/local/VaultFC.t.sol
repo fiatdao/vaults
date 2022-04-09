@@ -78,7 +78,7 @@ contract VaultFCTest is DSTest {
     }
 
     function test_vaultType() public {
-        assertEq(vault.vaultType(), bytes32("ERC1155"));
+        assertEq(vault.vaultType(), bytes32("ERC1155:FC"));
     }
 
     function test_token() public {

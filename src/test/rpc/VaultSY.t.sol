@@ -67,7 +67,7 @@ contract VaultSY_ModifyPositionCollateralizationTest is DSTest, ERC1155Holder {
     }
 
     function test_vaultType() public {
-        assertEq(vault.vaultType(), bytes32("ERC1155_W721"));
+        assertEq(vault.vaultType(), bytes32("ERC1155_W721:SY"));
     }
 
     function test_wrap() public {

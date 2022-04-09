@@ -13,10 +13,10 @@ import {SafeERC20} from "openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol"
 
 import {ICodex} from "fiat/interfaces/ICodex.sol";
 import {ICollybus} from "fiat/interfaces/ICollybus.sol";
+import {IVault} from "fiat/interfaces/IVault.sol";
 import {Guarded} from "fiat/utils/Guarded.sol";
 import {WAD, toInt256, add, sub, wmul, wdiv, mul, div} from "fiat/utils/Math.sol";
 
-import {IVault} from "./interfaces/IVault.sol";
 
 interface ISmartYield {
     struct SeniorBond {
@@ -157,7 +157,7 @@ contract VaultSY is Guarded, IVault, ERC165, ERC1155Supply, ERC721Holder {
         tokenScale = WAD;
         underlierToken = ISmartYieldProvider(ISmartYield(market_).pool()).uToken();
         underlierScale = 10**ISmartYieldController(ISmartYield(market_).controller()).underlyingDecimals();
-        vaultType = bytes32("ERC1155_W721");
+        vaultType = bytes32("ERC1155_W721:SY");
     }
 
     /// ======== Configuration ======== ///

@@ -7,10 +7,10 @@ import {MockProvider} from "../utils/MockProvider.sol";
 import {TestERC20} from "../utils/TestERC20.sol";
 
 import {Codex} from "fiat/Codex.sol";
+import {IVault} from "fiat/interfaces/IVault.sol";
 
 import {VaultFactory} from "../../VaultFactory.sol";
 import {VaultEPT, IWrappedPosition, ITranche, ITrancheFactory} from "../../VaultEPT.sol";
-import {IVault} from "../../interfaces/IVault.sol";
 
 contract TestTrancheToken {
     event Transfer(address indexed from, address indexed to, uint256 value);
@@ -177,7 +177,7 @@ contract VaultEPTTest is DSTest {
     }
 
     function test_vaultType() public {
-        assertEq(vault.vaultType(), bytes32("ERC20"));
+        assertEq(vault.vaultType(), bytes32("ERC20:EPT"));
     }
 
     function test_enter_transfers_to_vault(address owner, uint256 amount) public {

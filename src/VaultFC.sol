@@ -142,7 +142,7 @@ contract VaultFC is Guarded, IVaultFC, ERC1155Holder {
         underlierScale = 10**IERC20Metadata(underlierToken_).decimals();
         tenor = tenor_;
         currencyId = currencyId_;
-        vaultType = bytes32("ERC1155");
+        vaultType = bytes32("ERC1155:FC");
     }
 
     /// ======== Configuration ======== ///

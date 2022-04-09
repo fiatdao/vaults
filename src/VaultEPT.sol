@@ -12,7 +12,7 @@ import {ICodex} from "fiat/interfaces/ICodex.sol";
 import {Guarded} from "fiat/utils/Guarded.sol";
 import {WAD, toInt256, wmul, wdiv} from "fiat/utils/Math.sol";
 
-import {IVault} from "./interfaces/IVault.sol";
+import {IVaultEPT} from "./interfaces/IVaultEPT.sol";
 import {VaultFactory} from "./VaultFactory.sol";
 
 interface ITrancheFactory {
@@ -30,7 +30,7 @@ interface IWrappedPosition {
 /// @title VaultEPT (Element Finance Principal Token Vault)
 /// @notice Collateral adapter for Element Finance Principal Tokens
 /// @dev To be instantiated by the VaultFactory
-contract VaultEPT is Guarded, IVault, Initializable {
+contract VaultEPT is Guarded, IVaultEPT, Initializable {
     using SafeERC20 for IERC20;
 
     /// ======== Custom Errors ======== ///
@@ -48,9 +48,9 @@ contract VaultEPT is Guarded, IVault, Initializable {
     ICollybus public override collybus;
 
     /// @notice Element Finance WrappedPosition
-    IWrappedPosition public immutable wrappedPosition;
+    address public immutable wrappedPosition;
     /// @notice Element TrancheFactory
-    ITrancheFactory public immutable trancheFactory;
+    address public immutable trancheFactory;
 
     /// @notice Collateral token (set during intialization)
     address public override token;
@@ -62,7 +62,7 @@ contract VaultEPT is Guarded, IVault, Initializable {
     uint256 public immutable override underlierScale;
 
     /// @notice The vault type (set during intialization)
-    bytes32 public override vaultType;
+    bytes32 public immutable override vaultType;
 
     // @notice Cached maturity of pToken (set during intialization)
     uint256 internal _maturity;
@@ -87,12 +87,13 @@ contract VaultEPT is Guarded, IVault, Initializable {
         // disable deposits until proxy contract is initialized
         codex = ICodex(codex_);
 
-        wrappedPosition = IWrappedPosition(wrappedPosition_);
-        trancheFactory = ITrancheFactory(trancheFactory_);
+        wrappedPosition = wrappedPosition_;
+        trancheFactory = trancheFactory_;
         // underlier remains the same for all proxy instances of this contract
         address underlierToken_ = IWrappedPosition(wrappedPosition_).token();
         underlierToken = underlierToken_;
         underlierScale = 10**IERC20Metadata(underlierToken_).decimals();
+        vaultType = bytes32("ERC20:EPT");
     }
 
     /// ======== EIP1167 Minimal Proxy Contract ======== ///
@@ -112,9 +113,9 @@ contract VaultEPT is Guarded, IVault, Initializable {
                     keccak256(
                         abi.encodePacked(
                             bytes1(0xff),
-                            address(trancheFactory),
-                            keccak256(abi.encodePacked(address(wrappedPosition), _maturity_)),
-                            trancheFactory.TRANCHE_CREATION_HASH()
+                            trancheFactory,
+                            keccak256(abi.encodePacked(wrappedPosition, _maturity_)),
+                            ITrancheFactory(trancheFactory).TRANCHE_CREATION_HASH()
                         )
                     )
                 )
@@ -128,7 +129,6 @@ contract VaultEPT is Guarded, IVault, Initializable {
         collybus = ICollybus(collybus_);
         token = pToken;
         tokenScale = 10**IERC20Metadata(pToken).decimals();
-        vaultType = bytes32("ERC20");
         _maturity = _maturity_;
     }
 
