@@ -145,7 +145,6 @@ contract VaultEPT_ModifyPositionCollateralizationTest is DSTest, ERC1155Holder {
         assertEq(VaultEPT(instance).underlierToken(), address(underlierUSDC));
         assertEq(VaultEPT(instance).underlierScale(), 10**IERC20Metadata(address(underlierUSDC)).decimals());
         assertEq(address(VaultEPT(instance).collybus()), address(collybus));
-        assertEq(VaultEPT(instance).vaultType(), bytes32("ERC20"));
     }
 
     function test_enter(uint256 amount) public {
