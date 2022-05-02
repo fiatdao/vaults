@@ -221,7 +221,7 @@ contract VaultFC is Guarded, IVaultFC, ERC1155Holder {
         redeemed = INotionalV2(token).withdraw(uint16(currencyId), uint88(cTokensOwed), true);
 
         // transfer underlier token to user
-        IERC20(underlierToken).safeTransferFrom(address(this), user, redeemed);
+        IERC20(underlierToken).safeTransfer(user, redeemed);
 
         emit Exit(tokenId, user, amount);
     }
