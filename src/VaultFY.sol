@@ -21,19 +21,19 @@ interface IFYToken {
     function maturity() external view returns (uint256);
 }
 
-/// @title VaultYP (Yield Protocol fyToken Vault)
+/// @title VaultFY (Yield Protocol fyToken Vault)
 /// @notice Collateral adapter for Yield Protocol fyTokens
 /// @dev To be instantiated by the VaultFactory
-contract VaultYP is Guarded, IVault, Initializable {
+contract VaultFY is Guarded, IVault, Initializable {
     using SafeERC20 for IERC20;
 
     /// ======== Custom Errors ======== ///
 
-    error VaultYP__setParam_notLive();
-    error VaultYP__setParam_unrecognizedParam();
-    error VaultYP__enter_notLive();
-    error VaultYP__initialize_invalidToken();
-    error VaultYP__initialize_invalidUnderlierToken();
+    error VaultFY__setParam_notLive();
+    error VaultFY__setParam_unrecognizedParam();
+    error VaultFY__enter_notLive();
+    error VaultFY__initialize_invalidToken();
+    error VaultFY__initialize_invalidUnderlierToken();
 
     /// ======== Storage ======== ///
 
@@ -84,7 +84,7 @@ contract VaultYP is Guarded, IVault, Initializable {
 
         address underlier = IFYToken(fyToken).underlying();
         if (underlier != underlierToken || 10**IERC20Metadata(fyToken).decimals() != underlierScale) {
-            revert VaultYP__initialize_invalidUnderlierToken();
+            revert VaultFY__initialize_invalidUnderlierToken();
         }
 
         // intialize all mutable vars
@@ -103,9 +103,9 @@ contract VaultYP is Guarded, IVault, Initializable {
     /// @param param Name of the variable to set
     /// @param data New value to set for the variable [address]
     function setParam(bytes32 param, address data) external virtual override checkCaller {
-        if (live == 0) revert VaultYP__setParam_notLive();
+        if (live == 0) revert VaultFY__setParam_notLive();
         if (param == "collybus") collybus = ICollybus(data);
-        else revert VaultYP__setParam_unrecognizedParam();
+        else revert VaultFY__setParam_unrecognizedParam();
         emit SetParam(param, data);
     }
 
@@ -121,7 +121,7 @@ contract VaultYP is Guarded, IVault, Initializable {
         address user,
         uint256 amount
     ) external virtual override {
-        if (live == 0) revert VaultYP__enter_notLive();
+        if (live == 0) revert VaultFY__enter_notLive();
         int256 wad = toInt256(wdiv(amount, tokenScale));
         codex.modifyBalance(address(this), 0, user, wad);
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);

@@ -8,7 +8,7 @@ import {TestERC20} from "../utils/TestERC20.sol";
 
 import {Codex} from "fiat/Codex.sol";
 import {VaultFactory} from "../../VaultFactory.sol";
-import {VaultYP} from "../../VaultYP.sol";
+import {VaultFY} from "../../VaultFY.sol";
 import {IVault} from "fiat/interfaces/IVault.sol";
 contract TestFYToken {
     event Transfer(address indexed from, address indexed to, uint256 value);
@@ -87,9 +87,9 @@ contract TestFYToken {
     }
 }
 
-contract VaultYPTest is DSTest {
+contract VaultFYTest is DSTest {
     VaultFactory vaultFactory;
-    VaultYP impl;
+    VaultFY impl;
     IVault vault;
 
     TestFYToken token;
@@ -113,7 +113,7 @@ contract VaultYPTest is DSTest {
         token.setMaturity(maturity);
         token.setUnderlying(address(underlier));
 
-        impl = new VaultYP(address(codex), address(underlier));
+        impl = new VaultFY(address(codex), address(underlier));
         address vaultAddr = vaultFactory.createVault(address(impl), abi.encode(address(token), address(collybus)));
         vault = IVault(vaultAddr);
     }
@@ -252,7 +252,7 @@ contract VaultYPTest is DSTest {
         token.setDecimals(decimals);
         token.setUnderlying(address(underlier));
         vault = IVault(vaultFactory.createVault(
-            address(new VaultYP(address(codex), address(underlier))),
+            address(new VaultFY(address(codex), address(underlier))),
             abi.encode(address(token), address(collybus))
         ));
 
@@ -279,7 +279,7 @@ contract VaultYPTest is DSTest {
         token.setDecimals(decimals);
         token.setUnderlying(address(underlier));
         vault = IVault(vaultFactory.createVault(
-            address(new VaultYP(address(codex), address(underlier))),
+            address(new VaultFY(address(codex), address(underlier))),
             abi.encode(address(token), address(collybus))
         ));
 
