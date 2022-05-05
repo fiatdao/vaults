@@ -10,6 +10,7 @@ import {Codex} from "fiat/Codex.sol";
 import {VaultFactory} from "../../VaultFactory.sol";
 import {VaultFY} from "../../VaultFY.sol";
 import {IVault} from "fiat/interfaces/IVault.sol";
+
 contract TestFYToken {
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
@@ -17,7 +18,7 @@ contract TestFYToken {
     uint256 public totalSupply;
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
-    
+
     string public name = "Test Token";
     string public symbol = "TKN";
     uint8 public decimals = 18;
@@ -108,7 +109,7 @@ contract VaultFYTest is DSTest {
         collybus = new MockProvider();
         maturity = block.timestamp + 12 weeks;
         underlier = new TestERC20("Test Token", "TKN", 18);
-        
+
         token = new TestFYToken();
         token.setMaturity(maturity);
         token.setUnderlying(address(underlier));
@@ -251,10 +252,12 @@ contract VaultFYTest is DSTest {
         underlier = new TestERC20("Test Token", "TKN", decimals);
         token.setDecimals(decimals);
         token.setUnderlying(address(underlier));
-        vault = IVault(vaultFactory.createVault(
-            address(new VaultFY(address(codex), address(underlier))),
-            abi.encode(address(token), address(collybus))
-        ));
+        vault = IVault(
+            vaultFactory.createVault(
+                address(new VaultFY(address(codex), address(underlier))),
+                abi.encode(address(token), address(collybus))
+            )
+        );
 
         token.approve(address(vault), amount);
         token.mint(address(this), amount);
@@ -278,10 +281,12 @@ contract VaultFYTest is DSTest {
         underlier = new TestERC20("Test Token", "TKN", decimals);
         token.setDecimals(decimals);
         token.setUnderlying(address(underlier));
-        vault = IVault(vaultFactory.createVault(
-            address(new VaultFY(address(codex), address(underlier))),
-            abi.encode(address(token), address(collybus))
-        ));
+        vault = IVault(
+            vaultFactory.createVault(
+                address(new VaultFY(address(codex), address(underlier))),
+                abi.encode(address(token), address(collybus))
+            )
+        );
 
         token.approve(address(vault), amount);
         token.mint(address(vault), amount);
