@@ -170,7 +170,7 @@ contract VaultFY is Guarded, IVault, Initializable {
         bool net,
         bool face
     ) external view override returns (uint256) {
-        return ICollybus(collybus).read(address(this), underlierToken, 0, (face) ? block.timestamp : maturity(0), net);
+        return collybus.read(address(this), underlierToken, 0, (face) ? block.timestamp : maturity(0), net);
     }
 
     /// ======== Shutdown ======== ///
