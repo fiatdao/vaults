@@ -106,7 +106,7 @@ contract VaultFC is Guarded, IVaultFC, ERC1155Holder {
     uint256 public immutable currencyId;
 
     /// @notice Notional tenor
-    /// (1 - Quarter, 2 - Half Year, 3 - Year, 4 - 2 Years, 5 - 5 Years, 6 - 10 Years, 7 - 20 Years)
+    /// (seconds)
     uint256 public immutable tenor;
 
     /// @notice The vault type
