@@ -102,11 +102,10 @@ contract VaultFC is Guarded, IVaultFC, ERC1155Holder {
     /// @notice Decimals of underlier token
     uint256 public immutable override underlierScale;
 
-    /// @notice Notional currency id (1 - cETH, 2 - cDAI, 3 - cUSDC, 4 - cWBTC )
+    /// @notice Notional Finance CurrencyId (1 - cETH, 2 - cDAI, 3 - cUSDC, 4 - cWBTC )
     uint256 public immutable currencyId;
 
-    /// @notice Notional tenor
-    /// (seconds)
+    /// @notice Notional Finance Tenor [seconds]
     uint256 public immutable tenor;
 
     /// @notice The vault type
