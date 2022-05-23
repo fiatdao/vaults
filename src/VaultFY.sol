@@ -28,7 +28,6 @@ contract VaultFY is Guarded, IVault, Initializable {
     using SafeERC20 for IERC20;
 
     /// ======== Custom Errors ======== ///
-    error VaultFY__nonzeroTokenId();
     error VaultFY__setParam_notLive();
     error VaultFY__setParam_unrecognizedParam();
     error VaultFY__enter_notLive();
@@ -61,8 +60,8 @@ contract VaultFY is Guarded, IVault, Initializable {
 
     event SetParam(bytes32 indexed param, address data);
 
-    event Enter(address indexed user, uint256 amount);
-    event Exit(address indexed user, uint256 amount);
+    event Enter(uint256 indexed tokenId, address indexed user, uint256 amount);
+    event Exit(uint256 indexed tokenId, address indexed user, uint256 amount);
 
     event Lock();
 
@@ -113,36 +112,34 @@ contract VaultFY is Guarded, IVault, Initializable {
 
     /// @notice Enters `amount` collateral into the system and credits it to `user`
     /// @dev Caller has to set allowance for this contract
-    /// @param tokenId *tokenId ERC1155 or ERC721 style TokenId (leave at 0 for ERC20)
+    /// @param *tokenId tokenId ERC1155 or ERC721 style TokenId (leave at 0 for ERC20)
     /// @param user Address to whom the collateral should be credited to in Codex
     /// @param amount Amount of collateral to enter [tokenScale]
     function enter(
-        uint256 tokenId,
+        uint256, /* tokenId */
         address user,
         uint256 amount
     ) external virtual override {
         if (live == 0) revert VaultFY__enter_notLive();
-        if (tokenId != 0) revert VaultFY__nonzeroTokenId();
         int256 wad = toInt256(wdiv(amount, tokenScale));
         codex.modifyBalance(address(this), 0, user, wad);
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
-        emit Enter(user, amount);
+        emit Enter(0, user, amount);
     }
 
     /// @notice Exits `amount` collateral into the system and credits it to `user`
-    /// @param tokenId ERC1155 or ERC721 style TokenId (leave at 0 for ERC20)
+    /// @param *tokenId ERC1155 or ERC721 style TokenId (leave at 0 for ERC20)
     /// @param user Address to whom the collateral should be credited to
     /// @param amount Amount of collateral to exit [tokenScale]
     function exit(
-        uint256 tokenId,
+        uint256, /* tokenId */
         address user,
         uint256 amount
     ) external virtual override {
-        if (tokenId != 0) revert VaultFY__nonzeroTokenId();
         int256 wad = toInt256(wdiv(amount, tokenScale));
         codex.modifyBalance(address(this), 0, msg.sender, -int256(wad));
         IERC20(token).safeTransfer(user, amount);
-        emit Exit(user, amount);
+        emit Exit(0, user, amount);
     }
 
     /// ======== Collateral Asset ======== ///
