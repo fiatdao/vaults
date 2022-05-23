@@ -132,6 +132,7 @@ contract VaultFY_ModifyPositionCollateralizationTest is DSTest, ERC1155Holder {
 
     function test_enter() public {
         uint256 amount = IERC20(fyUSDC04).balanceOf(address(this));
+        assertGt(amount, 0);
 
         uint256 balanceBefore = IERC20(fyUSDC04).balanceOf(address(vaultFY_USDC04));
         uint256 collateralBefore = _balance(address(vaultFY_USDC04), address(me));

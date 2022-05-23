@@ -93,7 +93,7 @@ contract VaultFY is Guarded, IVault, Initializable {
         collybus = ICollybus(collybus_);
         token = fyToken;
         tokenScale = 10**IERC20Metadata(fyToken).decimals();
-        vaultType = bytes32("ERC20");
+        vaultType = bytes32("ERC20:FY");
     }
 
     /// ======== Configuration ======== ///

@@ -152,7 +152,7 @@ contract VaultFYTest is DSTest {
     }
 
     function test_vaultType() public {
-        assertEq(vault.vaultType(), bytes32("ERC20"));
+        assertEq(vault.vaultType(), bytes32("ERC20:FY"));
     }
 
     function test_enter_transfers_to_vault(address owner, uint256 amount) public {
