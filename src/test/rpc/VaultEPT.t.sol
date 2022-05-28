@@ -147,10 +147,9 @@ contract VaultEPT_ModifyPositionCollateralizationTest is DSTest, ERC1155Holder {
         assertEq(address(VaultEPT(instance).collybus()), address(collybus));
     }
 
-    function test_enter(uint256 amount) public {
-        if (amount > MAX_AMOUNT || amount > IERC20(trancheUSDC_V4_3Months).balanceOf(me)) {
-            return;
-        }
+    function test_enter(uint32 rnd) public {
+        if (rnd == 0) return;
+        uint256 amount = rnd % IERC20(trancheUSDC_V4_3Months).balanceOf(me);
 
         uint256 balanceBefore = IERC20(trancheUSDC_V4_3Months).balanceOf(address(vaultYUSDC_V4_3Months));
         uint256 collateralBefore = _balance(address(vaultYUSDC_V4_3Months), address(me));
@@ -164,14 +163,10 @@ contract VaultEPT_ModifyPositionCollateralizationTest is DSTest, ERC1155Holder {
         assertEq(_balance(address(vaultYUSDC_V4_3Months), address(me)), collateralBefore + wadAmount);
     }
 
-    function test_exit(uint256 amountEnter, uint256 amountExit) public {
-        if (
-            amountEnter > MAX_AMOUNT ||
-            amountExit > amountEnter ||
-            amountEnter > IERC20(trancheUSDC_V4_3Months).balanceOf(me)
-        ) {
-            return;
-        }
+    function test_exit(uint32 rndA, uint32 rndB) public {
+        if (rndA == 0 || rndB == 0) return;
+        uint256 amountEnter = rndA % IERC20(trancheUSDC_V4_3Months).balanceOf(me);
+        uint256 amountExit = rndB % amountEnter;
 
         vaultYUSDC_V4_3Months.enter(0, me, amountEnter);
 

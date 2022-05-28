@@ -130,9 +130,9 @@ contract VaultFY_ModifyPositionCollateralizationTest is DSTest, ERC1155Holder {
         assertEq(address(VaultFY(instance).collybus()), address(collybus));
     }
 
-    function test_enter() public {
-        uint256 amount = IERC20(fyUSDC04).balanceOf(address(this));
-        assertGt(amount, 0);
+    function test_enter(uint32 rnd) public {
+        if (rnd == 0) return;
+        uint256 amount = rnd % IERC20(fyUSDC04).balanceOf(address(this));
 
         uint256 balanceBefore = IERC20(fyUSDC04).balanceOf(address(vaultFY_USDC04));
         uint256 collateralBefore = _balance(address(vaultFY_USDC04), address(me));
@@ -145,9 +145,11 @@ contract VaultFY_ModifyPositionCollateralizationTest is DSTest, ERC1155Holder {
         assertEq(_balance(address(vaultFY_USDC04), address(me)), collateralBefore + wadAmount);
     }
 
-    function test_exit() public {
-        uint256 amountEnter = IERC20(fyUSDC04).balanceOf(address(this));
-        uint256 amountExit = amountEnter / 2;
+    function test_exit(uint32 rndA, uint32 rndB) public {
+        if (rndA == 0 || rndB == 0) return;
+        uint256 amountEnter = rndA % IERC20(fyUSDC04).balanceOf(address(this));
+        uint256 amountExit = rndB % amountEnter;
+
         vaultFY_USDC04.enter(0, me, amountEnter);
 
         uint256 balanceBefore = IERC20(fyUSDC04).balanceOf(address(vaultFY_USDC04));
