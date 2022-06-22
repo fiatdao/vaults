@@ -190,8 +190,11 @@ contract VaultAPWPT is Guarded, IVault, Initializable {
         }
         futureVault.claimFYT(address(this), amount);
         uint256 fytBalance = IERC20(fyt).balanceOf(address(this));
+        // performs a swap on the PT/FYT pool
         IAMM(amm).swapExactAmountIn(1, 1, fytBalance, 0, minPTAmount, address(this));
-        vaultClaimablePT = IERC20(token).balanceOf((address(this))) - oldPTBalance;
+
+        // Previous call to claimFYT may transfer PT to this address on top of PT received from the swap.
+        vaultClaimablePT += IERC20(token).balanceOf((address(this))) - oldPTBalance;
     }
 
     function claimYield(address user) public {
