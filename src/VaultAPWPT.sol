@@ -17,10 +17,25 @@ import {VaultFactory} from "./VaultFactory.sol";
 
 interface IFutureVault {
     function getIBTAddress() external view returns (address);
+    function claimFYT(address _user, uint256 _amount) external;
+    function getClaimableFYTForPeriod(address _user, uint256 _periodIndex) external view returns (uint256);
+    function getCurrentPeriodIndex() external view returns (uint256);
+    function getFYTofPeriod(uint256 _periodIndex) external view returns (address);
 }
 
 interface IPT {
     function futureVault() external view returns (IFutureVault);
+}
+
+interface IAMM {
+    function swapExactAmountIn(
+        uint256 _pairID,
+        uint256 _tokenIn,
+        uint256 _tokenAmountIn,
+        uint256 _tokenOut,
+        uint256 _minAmountOut,
+        address _to
+    ) external returns (uint256 tokenAmountOut, uint256 spotPriceAfter);
 }
 
 contract VaultAPWPT is Guarded, IVault, Initializable {
@@ -33,6 +48,7 @@ contract VaultAPWPT is Guarded, IVault, Initializable {
     error VaultAPWPT__enter_notLive();
     error VaultAPWPT__initialize_invalidToken();
     error VaultAPWPT__initialize_invalidUnderlierToken();
+    error VaultAPWPT__claimYield_invalidUserPeriod();
 
     /// ======== Storage ======== ///
 
@@ -40,9 +56,15 @@ contract VaultAPWPT is Guarded, IVault, Initializable {
     ICodex public immutable override codex;
     /// @notice Price Feed (set during intialization)
     ICollybus public override collybus;
-
+    IFutureVault futureVault;
     /// @notice Collateral token (set during intialization)
     address public override token;
+    /// @notice Yield bearing token
+    address public fyt;
+    /// @notice AMM for trading FYT/PT
+    address public amm;
+    /// @notice The current FYT period index
+    uint256 public fytPeriodIndex;
     /// @notice Scale of collateral token (set during intialization)
     uint256 public override tokenScale;
     /// @notice Underlier of collateral token
@@ -55,6 +77,11 @@ contract VaultAPWPT is Guarded, IVault, Initializable {
 
     /// @notice Boolean indicating if this contract is live (0 - not live, 1 - live) (set during intialization)
     uint256 public override live;
+
+    uint256 public vaultClaimablePT;
+    /// @notice Mapping to track when a user entered or withdrew from the vault
+    mapping (address => uint256) userPeriodInteraction;
+
 
     /// ======== Events ======== ///
 
@@ -79,8 +106,9 @@ contract VaultAPWPT is Guarded, IVault, Initializable {
     /// @dev Initializer modifier ensures it can only be called once
     /// @param params Constructor arguments of the proxy
     function initialize(bytes calldata params) external initializer {
-        (address pt, address collybus_, address root) = abi.decode(params, (address, address, address));
-        IFutureVault futureVault = IPT(pt).futureVault();
+        (address pt, address amm_, address collybus_, address root) = abi.decode(params, (address, address, address, address));
+        futureVault = IPT(pt).futureVault();
+        fytPeriodIndex = futureVault.getCurrentPeriodIndex();
         address underlier = futureVault.getIBTAddress();
         if (underlier != underlierToken || 10**IERC20Metadata(pt).decimals() != underlierScale) {
             revert VaultAPWPT__initialize_invalidUnderlierToken();
@@ -91,6 +119,8 @@ contract VaultAPWPT is Guarded, IVault, Initializable {
         live = 1;
         collybus = ICollybus(collybus_);
         token = pt;
+        fyt = futureVault.getFYTofPeriod(fytPeriodIndex);
+        amm = amm_;
         tokenScale = 10**IERC20Metadata(pt).decimals();
         vaultType = bytes32("ERC20");
     }
@@ -104,6 +134,7 @@ contract VaultAPWPT is Guarded, IVault, Initializable {
     function setParam(bytes32 param, address data) external virtual override checkCaller {
         if (live == 0) revert VaultAPWPT__setParam_notLive();
         if (param == "collybus") collybus = ICollybus(data);
+        if (param == "FYT") fyt = data;
         else revert VaultAPWPT__setParam_unrecognizedParam();
         emit SetParam(param, data);
     }
@@ -124,6 +155,9 @@ contract VaultAPWPT is Guarded, IVault, Initializable {
         if (tokenId != 0) revert VaultAPWPT__nonzeroTokenId();
         int256 wad = toInt256(wdiv(amount, tokenScale));
         codex.modifyBalance(address(this), 0, user, wad);
+
+        userPeriodInteraction[user] = fytPeriodIndex;
+
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         emit Enter(user, amount);
     }
@@ -140,8 +174,33 @@ contract VaultAPWPT is Guarded, IVault, Initializable {
         if (tokenId != 0) revert VaultAPWPT__nonzeroTokenId();
         int256 wad = toInt256(wdiv(amount, tokenScale));
         codex.modifyBalance(address(this), 0, msg.sender, -int256(wad));
+
+        userPeriodInteraction[user] = fytPeriodIndex;
+        claimYield(user);
         IERC20(token).safeTransfer(user, amount);
+        
         emit Exit(user, amount);
+    }
+
+    function compoundYield(uint256 amount, uint256 minPTAmount) external {
+        uint256 oldPTBalance = IERC20(token).balanceOf(address(this));
+        uint256 periodIndex = futureVault.getCurrentPeriodIndex();
+        if (fytPeriodIndex < periodIndex) {
+            fytPeriodIndex = periodIndex;
+        }
+        futureVault.claimFYT(address(this), amount);
+        uint256 fytBalance = IERC20(fyt).balanceOf(address(this));
+        IAMM(amm).swapExactAmountIn(1, 1, fytBalance, 0, minPTAmount, address(this));
+        vaultClaimablePT = IERC20(token).balanceOf((address(this))) - oldPTBalance;
+    }
+
+    function claimYield(address user) public {
+        if (userPeriodInteraction[user] < fytPeriodIndex && userPeriodInteraction[user] != 0) {
+            uint256 vaultPTBalance = IERC20(token).balanceOf(address(this));
+            uint256 claimAmount = (vaultClaimablePT * codex.balances(address(this), 0, user)) / (vaultPTBalance - vaultClaimablePT);
+            vaultClaimablePT -= claimAmount;
+            IERC20(token).safeTransfer(user, claimAmount);
+        }
     }
 
     /// ======== Collateral Asset ======== ///
