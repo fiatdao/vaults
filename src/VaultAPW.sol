@@ -66,8 +66,6 @@ contract VaultAPW is Guarded, IVault, Initializable {
     IFutureVault futureVault;
     /// @notice Collateral token (set during intialization)
     address public override token;
-    /// @notice The current FYT period index
-    uint256 public fytPeriodIndex;
     /// @notice Scale of collateral token (set during intialization)
     uint256 public override tokenScale;
     /// @notice Underlier of collateral token
@@ -80,10 +78,6 @@ contract VaultAPW is Guarded, IVault, Initializable {
 
     /// @notice Boolean indicating if this contract is live (0 - not live, 1 - live) (set during intialization)
     uint256 public override live;
-
-    uint256 public vaultClaimablePT;
-    /// @notice Mapping to track when a user entered or withdrew from the vault
-    mapping(address => uint256) userPeriodInteraction;
 
     /// ======== Events ======== ///
 
@@ -110,7 +104,6 @@ contract VaultAPW is Guarded, IVault, Initializable {
     function initialize(bytes calldata params) external initializer {
         (address pt, address collybus_, address root) = abi.decode(params, (address, address, address));
         futureVault = IPT(pt).futureVault();
-        fytPeriodIndex = futureVault.getCurrentPeriodIndex();
         address underlier = futureVault.getIBTAddress();
         if (underlier != underlierToken || 10**IERC20Metadata(pt).decimals() != underlierScale) {
             revert VaultAPW__initialize_invalidUnderlierToken();
@@ -156,14 +149,8 @@ contract VaultAPW is Guarded, IVault, Initializable {
         if (tokenId != 0 && tokenId != currentPeriodIndex) revert VaultAPW__enter_invalidTokenId();
         int256 wad = toInt256(wdiv(amount, tokenScale));
         codex.modifyBalance(address(this), tokenId, user, wad);
-        // Use PT if token id is 0, otherwise get current fyt
-        address assetIn;
-        if (tokenId == 0) {
-            futureVault.createFYTDelegationTo(address(this), user, amount);
-            assetIn = token;
-        } else {
-            assetIn = futureVault.getFYTofPeriod(currentPeriodIndex);
-        }
+
+        address assetIn = tokenId == 0 ? token : futureVault.getFYTofPeriod(currentPeriodIndex);
         IERC20(assetIn).safeTransferFrom(msg.sender, address(this), amount);
         emit Enter(user, amount);
     }
@@ -182,13 +169,8 @@ contract VaultAPW is Guarded, IVault, Initializable {
         if (tokenId > currentPeriodIndex) revert VaultAPW__exit_invalidTokenId();
         int256 wad = toInt256(wdiv(amount, tokenScale));
         codex.modifyBalance(address(this), tokenId, msg.sender, -int256(wad));
-        address assetOut;
-        if (tokenId == 0) {
-            futureVault.withdrawFYTDelegationFrom(address(this), user, amount);
-            assetOut = token;
-        } else {
-            assetOut = futureVault.getFYTofPeriod(tokenId);
-        }
+
+        address assetOut = tokenId == 0 ? token : futureVault.getFYTofPeriod(tokenId);
         IERC20(assetOut).safeTransfer(user, amount);
 
         emit Exit(user, amount);
