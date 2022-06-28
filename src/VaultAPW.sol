@@ -164,7 +164,7 @@ contract VaultAPW is Guarded, IVault, Initializable {
         } else {
             assetIn = futureVault.getFYTofPeriod(currentPeriodIndex);
         }
-        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        IERC20(assetIn).safeTransferFrom(msg.sender, address(this), amount);
         emit Enter(user, amount);
     }
 
@@ -189,7 +189,7 @@ contract VaultAPW is Guarded, IVault, Initializable {
         } else {
             assetOut = futureVault.getFYTofPeriod(tokenId);
         }
-        IERC20(token).safeTransfer(user, amount);
+        IERC20(assetOut).safeTransfer(user, amount);
 
         emit Exit(user, amount);
     }
