@@ -14,6 +14,7 @@ import {WAD, toInt256, wmul, wdiv} from "fiat/utils/Math.sol";
 import {IVault} from "fiat/interfaces/IVault.sol";
 
 import {VaultFactory} from "./VaultFactory.sol";
+//import {console} from "./test/utils/Console.sol";
 
 interface IFutureVault {
     function getIBTAddress() external view returns (address);
@@ -115,7 +116,7 @@ contract VaultAPW is Guarded, IVault, Initializable {
         collybus = ICollybus(collybus_);
         token = pt;
         tokenScale = 10**IERC20Metadata(pt).decimals();
-        vaultType = bytes32("ERC20");
+        vaultType = bytes32("ERC20:APW");
     }
 
     /// ======== Configuration ======== ///
