@@ -10,7 +10,7 @@ import {Clones} from "openzeppelin/contracts/proxy/Clones.sol";
 import {ICollybus} from "fiat/interfaces/ICollybus.sol";
 import {ICodex} from "fiat/interfaces/ICodex.sol";
 import {Guarded} from "fiat/utils/Guarded.sol";
-import {WAD, toInt256, wmul, wdiv} from "fiat/utils/Math.sol";
+import {WAD, toInt256, wmul, wdiv, add, sub} from "fiat/utils/Math.sol";
 import {IVault} from "fiat/interfaces/IVault.sol";
 
 import {VaultFactory} from "./VaultFactory.sol";
@@ -27,6 +27,8 @@ interface IFutureVault {
 
     function getFYTofPeriod(uint256 _periodIndex) external view returns (address);
 
+    function updateUserState(address _user) external;
+
     function createFYTDelegationTo(
         address _delegator,
         address _receiver,
@@ -42,6 +44,8 @@ interface IFutureVault {
 
 interface IPT {
     function futureVault() external view returns (IFutureVault);
+
+    function recordedBalanceOf(address account) external view returns (uint256);
 }
 
 contract VaultAPW is Guarded, IVault, Initializable {
@@ -73,6 +77,19 @@ contract VaultAPW is Guarded, IVault, Initializable {
     address public immutable override underlierToken;
     /// @notice Scale of underlier of collateral token
     uint256 public immutable override underlierScale;
+    uint256 recordedPTBalance;
+    uint256 firstPeriodIndex;
+    // Amount of total pt was deposited in a period
+    mapping(uint256 => uint256) public ptDepositsFromPeriod;
+    // Amount of pt accumulated for each period from compounded interest
+    mapping(uint256 => uint256) public ptAccumulated;
+    // PT rate = PnAccumulated / PnDeposited
+    mapping(uint256 => uint256) public ptRate;
+    // PT that was earned each period
+    mapping(uint256 => uint256) public ptInterestFromPeriod;
+
+    uint256 public fytInterest;
+    uint256 public currentPeriodIndex;
 
     /// @notice The vault type (set during intialization)
     bytes32 public override vaultType;
@@ -109,6 +126,8 @@ contract VaultAPW is Guarded, IVault, Initializable {
         if (underlier != underlierToken || 10**IERC20Metadata(pt).decimals() != underlierScale) {
             revert VaultAPW__initialize_invalidUnderlierToken();
         }
+        firstPeriodIndex = futureVault.getCurrentPeriodIndex();
+        currentPeriodIndex = firstPeriodIndex;
 
         // intialize all mutable vars
         _setRoot(root);
@@ -145,14 +164,35 @@ contract VaultAPW is Guarded, IVault, Initializable {
         uint256 amount
     ) external virtual override {
         if (live == 0) revert VaultAPW__enter_notLive();
-        uint256 currentPeriodIndex = futureVault.getCurrentPeriodIndex();
-        // Only PT and current period FYTs can enter
-        if (tokenId != 0 && tokenId != currentPeriodIndex) revert VaultAPW__enter_invalidTokenId();
+        uint256 currentPeriodIndex_ = futureVault.getCurrentPeriodIndex();
+
+        // For accounting purposes, tokenId must match current period
+        if (tokenId != currentPeriodIndex_) revert VaultAPW__enter_invalidTokenId();
         int256 wad = toInt256(wdiv(amount, tokenScale));
         codex.modifyBalance(address(this), tokenId, user, wad);
 
-        address assetIn = tokenId == 0 ? token : futureVault.getFYTofPeriod(currentPeriodIndex);
-        IERC20(assetIn).safeTransferFrom(msg.sender, address(this), amount);
+        uint256 ptBalancePreTransfer = IERC20(token).balanceOf(address(this));
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+
+        // If there was a period change
+        if (currentPeriodIndex < currentPeriodIndex_) {
+            currentPeriodIndex = currentPeriodIndex_;
+            if (ptBalancePreTransfer > 0) {
+                uint256 totalPTInterest = IERC20(token).balanceOf(address(this)) - (ptBalancePreTransfer + amount);
+                for (uint256 i = firstPeriodIndex; i < currentPeriodIndex_; ++i) {
+                    uint256 interestEarnedPerPeriod = (totalPTInterest * (ptDepositsFromPeriod[i] + ptAccumulated[i])) /
+                        ptBalancePreTransfer;
+                    ptAccumulated[i] += interestEarnedPerPeriod;
+                    if (ptDepositsFromPeriod[i] > 0) {
+                        ptRate[i] =
+                            ((ptDepositsFromPeriod[i] + ptAccumulated[i]) * tokenScale) /
+                            ptDepositsFromPeriod[i];
+                    }
+                }
+            }
+        }
+
+        ptDepositsFromPeriod[currentPeriodIndex_] += amount;
         emit Enter(user, amount);
     }
 
@@ -166,13 +206,39 @@ contract VaultAPW is Guarded, IVault, Initializable {
         uint256 amount
     ) external virtual override {
         if (live == 0) revert VaultAPW__enter_notLive();
-        uint256 currentPeriodIndex = futureVault.getCurrentPeriodIndex();
         if (tokenId > currentPeriodIndex) revert VaultAPW__exit_invalidTokenId();
         int256 wad = toInt256(wdiv(amount, tokenScale));
         codex.modifyBalance(address(this), tokenId, msg.sender, -int256(wad));
 
-        address assetOut = tokenId == 0 ? token : futureVault.getFYTofPeriod(tokenId);
-        IERC20(assetOut).safeTransfer(user, amount);
+        uint256 currentPeriodIndex_ = futureVault.getCurrentPeriodIndex();
+        uint256 ptBalancePreTransfer = IERC20(token).balanceOf(address(this));
+
+        // If there was a period change
+        if (currentPeriodIndex < currentPeriodIndex_) {
+            // Claim pt
+            futureVault.updateUserState(address(this));
+            currentPeriodIndex = currentPeriodIndex_;
+            if (ptBalancePreTransfer > 0) {
+                uint256 totalPTInterest = IERC20(token).balanceOf(address(this)) - ptBalancePreTransfer;
+                for (uint256 i = firstPeriodIndex; i < currentPeriodIndex_; ++i) {
+                    uint256 interestEarnedPerPeriod = (totalPTInterest * (ptDepositsFromPeriod[i] + ptAccumulated[i])) /
+                        ptBalancePreTransfer;
+                    ptAccumulated[i] += interestEarnedPerPeriod;
+                    if (ptDepositsFromPeriod[i] > 0) {
+                        ptRate[i] =
+                            ((ptDepositsFromPeriod[i] + ptAccumulated[i]) * tokenScale) /
+                            ptDepositsFromPeriod[i];
+                    }
+                }
+            }
+        }
+        ptDepositsFromPeriod[currentPeriodIndex_] -= amount;
+        if (ptRate[tokenId] > 0) {
+            uint256 withdrawAmount = (amount * ptRate[tokenId]) / tokenScale;
+            IERC20(token).safeTransfer(user, withdrawAmount);
+        } else {
+            IERC20(token).safeTransfer(user, amount);
+        }
 
         emit Exit(user, amount);
     }

@@ -12,12 +12,13 @@ import {IVault} from "fiat/interfaces/IVault.sol";
 import {VaultFactory} from "../../VaultFactory.sol";
 import {IFutureVault, IPT, VaultAPW} from "../../VaultAPW.sol";
 
-//import {console} from "../utils/Console.sol";
+import {console} from "../utils/Console.sol";
 
 contract FutureVault {
     TestERC20 fy1;
     TestERC20 fy2;
     TestERC20 ibt;
+    uint256 periodIndex;
 
     constructor(
         address fy1_,
@@ -33,8 +34,12 @@ contract FutureVault {
         return address(ibt);
     }
 
-    function getCurrentPeriodIndex() public pure returns (uint256) {
-        return 2;
+    function setCurrentPeriodIndex(uint256 index) public {
+        periodIndex = index;
+    }
+
+    function getCurrentPeriodIndex() public view returns (uint256) {
+        return periodIndex;
     }
 
     function getFYTofPeriod(uint256 index) external view returns (address) {
@@ -45,15 +50,50 @@ contract FutureVault {
 
 contract PT is TestERC20 {
     FutureVault public futureVault;
+    uint256 interestAmount;
+    bool mintTo;
+    bool mintFrom;
 
     constructor(address futureVault_, uint8 decimals) TestERC20("Principal Token", "PT", decimals) {
         futureVault = FutureVault(futureVault_);
+    }
+
+    function setInterestAmount(uint256 amount) public {
+        interestAmount = amount;
+    }
+
+    function setMintTo(bool value) public {
+        mintTo = value;
+    }
+
+    function setMintFrom(bool value) public {
+        mintFrom = value;
+    }
+
+    function transferFrom(
+        address from,
+        address to,
+        uint256 value
+    ) public override returns (bool) {
+        if (mintFrom) mint(from, interestAmount);
+        if (mintTo) mint(to, interestAmount);
+
+        if (allowance[from][msg.sender] != type(uint256).max) {
+            allowance[from][msg.sender] -= value;
+        }
+        balanceOf[from] -= value;
+        unchecked {
+            balanceOf[to] += value;
+        }
+        emit Transfer(from, to, value);
+        return true;
     }
 }
 
 contract VaultAPWTest is DSTest {
     VaultFactory vaultFactory;
     VaultAPW impl;
+    VaultAPW vaultAPW;
     IVault vault;
 
     PT pt;
@@ -82,6 +122,7 @@ contract VaultAPWTest is DSTest {
         impl = new VaultAPW(address(codex), address(underlier));
         address vaultAddr = vaultFactory.createVault(address(impl), abi.encode(address(pt), address(collybus)));
         vault = IVault(vaultAddr);
+        vaultAPW = VaultAPW(vaultAddr);
     }
 
     function test_codex() public {
@@ -122,16 +163,178 @@ contract VaultAPWTest is DSTest {
         pt.approve(address(vault), amount);
         pt.mint(address(this), amount);
 
-        fy2.approve(address(vault), amount);
-        fy2.mint(address(this), amount);
-
         vault.enter(0, owner, amount);
-        vault.enter(2, owner, amount);
 
         assertEq(pt.balanceOf(address(this)), 0);
         assertEq(pt.balanceOf(address(vault)), amount);
-        assertEq(fy2.balanceOf(address(this)), 0);
-        assertEq(fy2.balanceOf(address(vault)), amount);
+    }
+
+    function _periodSwitchAndEnter(
+        address owner,
+        uint256 amount,
+        uint256 period,
+        uint256 interestAmount
+    ) internal {
+        // Mint to vault on transfer to simulate redemptions
+        pt.setMintTo(true);
+        // Simulate a period switch
+        futureVault.setCurrentPeriodIndex(period);
+        // Set interest received during a transfer
+        pt.setInterestAmount(interestAmount);
+
+        pt.approve(address(vaultAPW), amount);
+        pt.mint(address(this), amount);
+        vaultAPW.enter(period, owner, amount);
+    }
+
+    function test_enter_3_period_switch() public {
+        uint256 amount = 100 * 10**18;
+        address owner = address(123456567889);
+
+        pt.approve(address(vault), amount);
+        pt.mint(address(this), amount);
+        vaultAPW.enter(0, owner, amount);
+        assertEq(pt.balanceOf(address(this)), 0);
+        assertEq(pt.balanceOf(address(vault)), amount);
+
+        uint256 baseInterest = amount / 100;
+
+        _periodSwitchAndEnter(owner, amount, 1, baseInterest);
+        _periodSwitchAndEnter(owner, amount, 2, 2 * baseInterest);
+        _periodSwitchAndEnter(owner, amount, 3, 3 * baseInterest);
+
+        assertEq(pt.balanceOf(address(this)), 0);
+        assertEq(pt.balanceOf(address(vaultAPW)), 4 * amount + baseInterest + 2 * baseInterest + 3 * baseInterest);
+
+        // Verified balances with numbers calcualted here: https://docs.google.com/spreadsheets/d/12Lnzpr4z_18oRMMeITp1nz03pDZiy6ytMJsllzZ-qN8/edit#gid=0
+        console.log("deposits 1", vaultAPW.ptDepositsFromPeriod(0));
+        console.log("deposits 2", vaultAPW.ptDepositsFromPeriod(1));
+        console.log("deposits 3", vaultAPW.ptDepositsFromPeriod(2));
+        console.log("deposits 4", vaultAPW.ptDepositsFromPeriod(3));
+        console.log("accumulated 1", vaultAPW.ptAccumulated(0));
+        console.log("accumulated 2", vaultAPW.ptAccumulated(1));
+        console.log("accumulated 3", vaultAPW.ptAccumulated(2));
+        console.log("accumulated 4", vaultAPW.ptAccumulated(3));
+        console.log("total 1", vaultAPW.ptDepositsFromPeriod(0) + vaultAPW.ptAccumulated(0));
+        console.log("total 2", vaultAPW.ptDepositsFromPeriod(1) + vaultAPW.ptAccumulated(1));
+        console.log("total 3", vaultAPW.ptDepositsFromPeriod(2) + vaultAPW.ptAccumulated(2));
+        console.log("total 4", vaultAPW.ptDepositsFromPeriod(2) + vaultAPW.ptAccumulated(3));
+        console.log("rate 1 ", vaultAPW.ptRate(0));
+        console.log("rate 2 ", vaultAPW.ptRate(1));
+        console.log("rate 3 ", vaultAPW.ptRate(2));
+        console.log("rate 4 ", vaultAPW.ptRate(3));
+    }
+
+    function test_enter_3_period_switch_then_exit() public {
+        uint256 amount = 100 * 10**18;
+        address owner = address(123456567889);
+
+        pt.approve(address(vault), amount);
+        pt.mint(address(this), amount);
+        vaultAPW.enter(0, owner, amount);
+        assertEq(pt.balanceOf(address(this)), 0);
+        assertEq(pt.balanceOf(address(vault)), amount);
+
+        uint256 baseInterest = amount / 100;
+
+        _periodSwitchAndEnter(owner, amount, 1, baseInterest);
+        _periodSwitchAndEnter(owner, amount, 2, 2 * baseInterest);
+        _periodSwitchAndEnter(owner, amount, 3, 3 * baseInterest);
+
+        vault.exit(0, owner, amount);
+        assertTrue(pt.balanceOf(owner) > amount);
+        assertEq(pt.balanceOf(owner), (amount * vaultAPW.ptRate(0)) / vault.tokenScale());
+        console.log("pt withdraw balance", pt.balanceOf(owner));
+    }
+
+    function test_enter_period_switch_decreased_deposits(address owner, uint256 amount) public {
+        if (amount >= MAX_AMOUNT) return;
+
+        pt.approve(address(vault), amount);
+        pt.mint(address(this), amount);
+        vaultAPW.enter(0, owner, amount);
+        assertEq(pt.balanceOf(address(this)), 0);
+        assertEq(pt.balanceOf(address(vault)), amount);
+
+        // Mint to vault on transfer to simulate redemptions
+        pt.setMintTo(true);
+        // Simulate a period switch
+        futureVault.setCurrentPeriodIndex(1);
+        // Set interest amount for period switch
+        uint256 interestAmount = amount / 100;
+        pt.setInterestAmount(interestAmount);
+
+        uint256 period2Amount = amount / 2;
+        pt.approve(address(vaultAPW), period2Amount);
+        pt.mint(address(this), period2Amount);
+        vaultAPW.enter(1, owner, period2Amount);
+        assertEq(pt.balanceOf(address(this)), 0);
+        assertEq(pt.balanceOf(address(vaultAPW)), amount + period2Amount + interestAmount);
+
+        assertEq(vaultAPW.ptDepositsFromPeriod(0), amount, "Bad deposits period 1");
+        assertEq(vaultAPW.ptDepositsFromPeriod(1), period2Amount, "Bad deposits period 2");
+        assertEq(vaultAPW.ptAccumulated(0), interestAmount, "Bad accumulated 1");
+        assertEq(vaultAPW.ptAccumulated(1), 0, "Bad accumulated 2");
+    }
+
+    function test_enter_period_switch_increase_deposits(address owner, uint256 amount) public {
+        if (amount >= MAX_AMOUNT) return;
+
+        pt.approve(address(vault), amount);
+        pt.mint(address(this), amount);
+        vaultAPW.enter(0, owner, amount);
+        assertEq(pt.balanceOf(address(this)), 0);
+        assertEq(pt.balanceOf(address(vault)), amount);
+
+        // Mint to vault on transfer to simulate redemptions
+        pt.setMintTo(true);
+        // Simulate a period switch
+        futureVault.setCurrentPeriodIndex(1);
+        // Set interest amount for period switch
+        uint256 interestAmount = amount / 2;
+        pt.setInterestAmount(interestAmount);
+
+        uint256 period2Amount = amount * 2;
+        pt.approve(address(vaultAPW), period2Amount);
+        pt.mint(address(this), period2Amount);
+        vaultAPW.enter(1, owner, period2Amount);
+        assertEq(pt.balanceOf(address(this)), 0);
+        assertEq(pt.balanceOf(address(vaultAPW)), amount + period2Amount + interestAmount);
+
+        assertEq(vaultAPW.ptDepositsFromPeriod(0), amount, "Bad deposits period 1");
+        assertEq(vaultAPW.ptDepositsFromPeriod(1), period2Amount, "Bad deposits period 2");
+        assertEq(vaultAPW.ptAccumulated(0), interestAmount, "Bad accumulated 1");
+        assertEq(vaultAPW.ptAccumulated(1), 0, "Bad accumulated 2");
+    }
+
+    function test_enter_period_switch_high_interest(address owner, uint256 amount) public {
+        if (amount >= MAX_AMOUNT) return;
+
+        pt.approve(address(vault), amount);
+        pt.mint(address(this), amount);
+        vaultAPW.enter(0, owner, amount);
+        assertEq(pt.balanceOf(address(this)), 0);
+        assertEq(pt.balanceOf(address(vault)), amount);
+
+        // Mint to vault on transfer to simulate redemptions
+        pt.setMintTo(true);
+        // Simulate a period switch
+        futureVault.setCurrentPeriodIndex(1);
+        // Set interest amount for period switch
+        uint256 interestAmount = amount * 10;
+        pt.setInterestAmount(interestAmount);
+
+        uint256 period2Amount = amount * 2;
+        pt.approve(address(vaultAPW), period2Amount);
+        pt.mint(address(this), period2Amount);
+        vaultAPW.enter(1, owner, period2Amount);
+        assertEq(pt.balanceOf(address(this)), 0);
+        assertEq(pt.balanceOf(address(vaultAPW)), amount + period2Amount + interestAmount);
+
+        assertEq(vaultAPW.ptDepositsFromPeriod(0), amount, "Bad deposits period 1");
+        assertEq(vaultAPW.ptDepositsFromPeriod(1), period2Amount, "Bad deposits period 2");
+        assertEq(vaultAPW.ptAccumulated(0), interestAmount, "Bad accumulated 1");
+        assertEq(vaultAPW.ptAccumulated(1), 0, "Bad accumulated 2");
     }
 
     function test_enter_calls_codex_modifyBalance(address owner, uint256 amount) public {
@@ -153,42 +356,17 @@ contract VaultAPWTest is DSTest {
         emit log_bytes(abi.encodeWithSelector(Codex.modifyBalance.selector, address(vault), 0, owner, amount));
     }
 
-    function test_enter_fy_calls_codex_modifyBalance(address owner, uint256 amount) public {
-        if (amount >= MAX_AMOUNT) return;
-
-        fy2.approve(address(vault), amount);
-        fy2.mint(address(this), amount);
-
-        vault.enter(2, owner, amount);
-
-        MockProvider.CallData memory cd = codex.getCallData(0);
-        assertEq(cd.caller, address(vault));
-        assertEq(cd.functionSelector, Codex.modifyBalance.selector);
-        assertEq(
-            keccak256(cd.data),
-            keccak256(abi.encodeWithSelector(Codex.modifyBalance.selector, address(vault), 2, owner, amount))
-        );
-        emit log_bytes(cd.data);
-        emit log_bytes(abi.encodeWithSelector(Codex.modifyBalance.selector, address(vault), 2, owner, amount));
-    }
-
     function test_exit_transfers_tokens(address owner, uint256 amount) public {
         if (amount >= MAX_AMOUNT) return;
 
         pt.approve(address(vault), amount);
         pt.mint(address(this), amount);
-        fy2.approve(address(vault), amount);
-        fy2.mint(address(this), amount);
 
         vault.enter(0, address(this), amount);
         vault.exit(0, owner, amount);
-        vault.enter(2, address(this), amount);
-        vault.exit(2, owner, amount);
 
         assertEq(pt.balanceOf(owner), amount);
         assertEq(pt.balanceOf(address(vault)), 0);
-        assertEq(fy2.balanceOf(owner), amount);
-        assertEq(fy2.balanceOf(address(vault)), 0);
     }
 
     function test_exit_calls_codex_modifyBalance(address owner, uint256 amount) public {
@@ -215,39 +393,6 @@ contract VaultAPWTest is DSTest {
         );
     }
 
-    function test_exit_fy_calls_codex_modifyBalance(address owner, uint256 amount) public {
-        if (amount >= MAX_AMOUNT) return;
-
-        fy2.approve(address(vault), amount);
-        fy2.mint(address(this), amount);
-
-        vault.enter(2, address(this), amount);
-        vault.exit(2, owner, amount);
-
-        MockProvider.CallData memory cd = codex.getCallData(1);
-        assertEq(cd.caller, address(vault));
-        assertEq(cd.functionSelector, Codex.modifyBalance.selector);
-        assertEq(
-            keccak256(cd.data),
-            keccak256(
-                abi.encodeWithSelector(Codex.modifyBalance.selector, address(vault), 2, address(this), -int256(amount))
-            )
-        );
-        emit log_bytes(cd.data);
-        emit log_bytes(
-            abi.encodeWithSelector(Codex.modifyBalance.selector, address(vault), 2, address(this), -int256(amount))
-        );
-    }
-
-    function testFail_enter_outdated_fyt(address owner, uint256 amount) public {
-        if (amount >= MAX_AMOUNT) assert(false);
-
-        fy1.approve(address(vault), amount);
-        fy1.mint(address(this), amount);
-
-        vault.enter(1, owner, amount);
-    }
-
     function testFail_enter_amount_cannot_be_casted(uint256 amount) public {
         if (amount <= uint256(type(int256).max)) assert(false);
 
@@ -267,7 +412,7 @@ contract VaultAPWTest is DSTest {
         vault.exit(0, address(this), amount);
     }
 
-    function test_enter_scales_amount_to_wad(uint8 decimals) public {
+    /*function test_enter_scales_amount_to_wad(uint8 decimals) public {
         if (decimals > MAX_DECIMALS) return;
 
         address owner = address(this);
@@ -326,5 +471,5 @@ contract VaultAPWTest is DSTest {
         // exit decreases the amount in Codex by that much
         int256 scaledAmount = int256(vanillaAmount) * 10**18 * -1;
         assertEq(sentAmount, scaledAmount);
-    }
+    }*/
 }

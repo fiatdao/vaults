@@ -42,7 +42,7 @@ contract TestERC20 {
         address from,
         address to,
         uint256 value
-    ) public returns (bool) {
+    ) public virtual returns (bool) {
         if (allowance[from][msg.sender] != type(uint256).max) {
             allowance[from][msg.sender] -= value;
         }
