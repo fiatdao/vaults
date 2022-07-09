@@ -14,6 +14,7 @@ import {WAD, toInt256, wmul, wdiv, add, sub} from "fiat/utils/Math.sol";
 import {IVault} from "fiat/interfaces/IVault.sol";
 
 import {VaultFactory} from "./VaultFactory.sol";
+
 //import {console} from "./test/utils/Console.sol";
 
 interface IFutureVault {
@@ -232,7 +233,7 @@ contract VaultAPW is Guarded, IVault, Initializable {
                 }
             }
         }
-        ptDepositsFromPeriod[currentPeriodIndex_] -= amount;
+        ptDepositsFromPeriod[tokenId] -= amount;
         if (ptRate[tokenId] > 0) {
             uint256 withdrawAmount = (amount * ptRate[tokenId]) / tokenScale;
             IERC20(token).safeTransfer(user, withdrawAmount);

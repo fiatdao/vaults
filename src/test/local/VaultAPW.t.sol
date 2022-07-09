@@ -18,6 +18,7 @@ contract FutureVault {
     TestERC20 fy1;
     TestERC20 fy2;
     TestERC20 ibt;
+    PT pt;
     uint256 periodIndex;
 
     constructor(
@@ -28,6 +29,10 @@ contract FutureVault {
         fy1 = TestERC20(fy1_);
         fy2 = TestERC20(fy2_);
         ibt = TestERC20(ibt_);
+    }
+
+    function setPT(PT pt_) public {
+        pt = pt_;
     }
 
     function getIBTAddress() public view returns (address) {
@@ -45,6 +50,10 @@ contract FutureVault {
     function getFYTofPeriod(uint256 index) external view returns (address) {
         if (index == 1) return address(fy1);
         else return address(fy2);
+    }
+
+    function updateUserState(address _user) external {
+        pt.claimYield(_user);
     }
 }
 
@@ -68,6 +77,10 @@ contract PT is TestERC20 {
 
     function setMintFrom(bool value) public {
         mintFrom = value;
+    }
+
+    function claimYield(address user) external {
+        mint(user, interestAmount);
     }
 
     function transferFrom(
@@ -118,6 +131,7 @@ contract VaultAPWTest is DSTest {
         underlier = new TestERC20("Interest Bearing Token", "IBT", 18);
         futureVault = new FutureVault(address(fy1), address(fy2), address(underlier));
         pt = new PT(address(futureVault), 18);
+        futureVault.setPT(pt);
 
         impl = new VaultAPW(address(codex), address(underlier));
         address vaultAddr = vaultFactory.createVault(address(impl), abi.encode(address(pt), address(collybus)));
@@ -241,6 +255,28 @@ contract VaultAPWTest is DSTest {
         _periodSwitchAndEnter(owner, amount, 2, 2 * baseInterest);
         _periodSwitchAndEnter(owner, amount, 3, 3 * baseInterest);
 
+        vault.exit(0, owner, amount);
+        assertTrue(pt.balanceOf(owner) > amount);
+        assertEq(pt.balanceOf(owner), (amount * vaultAPW.ptRate(0)) / vault.tokenScale());
+        console.log("pt withdraw balance", pt.balanceOf(owner));
+    }
+
+    function test_enter_3_period_switch_then_exit_on_period_switch() public {
+        uint256 amount = 100 * 10**18;
+        address owner = address(123456567889);
+
+        pt.approve(address(vault), amount);
+        pt.mint(address(this), amount);
+        vaultAPW.enter(0, owner, amount);
+        assertEq(pt.balanceOf(address(this)), 0);
+        assertEq(pt.balanceOf(address(vault)), amount);
+
+        uint256 baseInterest = amount / 100;
+
+        _periodSwitchAndEnter(owner, amount, 1, baseInterest);
+        _periodSwitchAndEnter(owner, amount, 2, 2 * baseInterest);
+        futureVault.setCurrentPeriodIndex(3);
+        pt.setInterestAmount(3 * baseInterest);
         vault.exit(0, owner, amount);
         assertTrue(pt.balanceOf(owner) > amount);
         assertEq(pt.balanceOf(owner), (amount * vaultAPW.ptRate(0)) / vault.tokenScale());
