@@ -264,11 +264,12 @@ contract VaultAPW is Guarded, IVault, Initializable {
     /// @param face Boolean indicating whether the current fair value or the fair value at maturity should be returned
     /// @return fair Price [wad]
     function fairPrice(
-        uint256,
+        uint256 tokenId,
         bool net,
         bool face
     ) external view override returns (uint256) {
-        return collybus.read(address(this), underlierToken, 0, (face) ? block.timestamp : maturity(0), net);
+        uint256 value = collybus.read(address(this), underlierToken, 0, (face) ? block.timestamp : maturity(0), net);
+        return (value * ptRate[tokenId]) / tokenScale;
     }
 
     /// ======== Shutdown ======== ///
