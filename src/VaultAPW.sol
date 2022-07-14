@@ -78,13 +78,15 @@ contract VaultAPW is Guarded, IVault, Initializable {
     address public immutable override underlierToken;
     /// @notice Scale of underlier of collateral token
     uint256 public immutable override underlierScale;
+    /// @notice Cached balance of PT
     uint256 recordedPTBalance;
+    /// @notice First period index vault was initialized with
     uint256 firstPeriodIndex;
-    // Amount of total pt was deposited in a period
+    /// @notice Amount of total pt was deposited in a period
     mapping(uint256 => uint256) public ptDepositsFromPeriod;
-    // Amount of pt accumulated for each period from compounded interest
+    /// @notice Amount of pt accumulated for each period from compounded interest
     mapping(uint256 => uint256) public ptAccumulated;
-    // PT rate = PnAccumulated / PnDeposited
+    /// @notice PT rate = PnAccumulated / PnDeposited
     mapping(uint256 => uint256) public ptRate;
 
     uint256 public fytInterest;
@@ -234,6 +236,8 @@ contract VaultAPW is Guarded, IVault, Initializable {
         if (ptRate[tokenId] > 0) {
             uint256 withdrawAmount = (amount * ptRate[tokenId]) / tokenScale;
             IERC20(token).safeTransfer(user, withdrawAmount);
+            address fytAddress = futureVault.getFYTofPeriod(currentPeriodIndex_);
+            IERC20(fytAddress).safeTransfer(user, withdrawAmount);
         } else {
             IERC20(token).safeTransfer(user, amount);
         }
