@@ -86,8 +86,6 @@ contract VaultAPW is Guarded, IVault, Initializable {
     mapping(uint256 => uint256) public ptAccumulated;
     // PT rate = PnAccumulated / PnDeposited
     mapping(uint256 => uint256) public ptRate;
-    // PT that was earned each period
-    mapping(uint256 => uint256) public ptInterestFromPeriod;
 
     uint256 public fytInterest;
     uint256 public currentPeriodIndex;
@@ -172,17 +170,16 @@ contract VaultAPW is Guarded, IVault, Initializable {
         int256 wad = toInt256(wdiv(amount, tokenScale));
         codex.modifyBalance(address(this), tokenId, user, wad);
 
-        uint256 ptBalancePreTransfer = IERC20(token).balanceOf(address(this));
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
 
         // If there was a period change
         if (currentPeriodIndex < currentPeriodIndex_) {
             currentPeriodIndex = currentPeriodIndex_;
-            if (ptBalancePreTransfer > 0) {
-                uint256 totalPTInterest = IERC20(token).balanceOf(address(this)) - (ptBalancePreTransfer + amount);
+            if (recordedPTBalance > 0) {
+                uint256 totalPTInterest = IERC20(token).balanceOf(address(this)) - (recordedPTBalance + amount);
                 for (uint256 i = firstPeriodIndex; i < currentPeriodIndex_; ++i) {
                     uint256 interestEarnedPerPeriod = (totalPTInterest * (ptDepositsFromPeriod[i] + ptAccumulated[i])) /
-                        ptBalancePreTransfer;
+                        recordedPTBalance;
                     ptAccumulated[i] += interestEarnedPerPeriod;
                     if (ptDepositsFromPeriod[i] > 0) {
                         ptRate[i] =
@@ -194,6 +191,7 @@ contract VaultAPW is Guarded, IVault, Initializable {
         }
 
         ptDepositsFromPeriod[currentPeriodIndex_] += amount;
+        recordedPTBalance = IERC20(token).balanceOf(address(this));
         emit Enter(user, amount);
     }
 
@@ -212,23 +210,22 @@ contract VaultAPW is Guarded, IVault, Initializable {
         codex.modifyBalance(address(this), tokenId, msg.sender, -int256(wad));
 
         uint256 currentPeriodIndex_ = futureVault.getCurrentPeriodIndex();
-        uint256 ptBalancePreTransfer = IERC20(token).balanceOf(address(this));
 
         // If there was a period change
         if (currentPeriodIndex < currentPeriodIndex_) {
             // Claim pt
             futureVault.updateUserState(address(this));
             currentPeriodIndex = currentPeriodIndex_;
-            if (ptBalancePreTransfer > 0) {
-                uint256 totalPTInterest = IERC20(token).balanceOf(address(this)) - ptBalancePreTransfer;
+            if (recordedPTBalance > 0) {
+                uint256 totalPTInterest = IERC20(token).balanceOf(address(this)) - recordedPTBalance;
                 for (uint256 i = firstPeriodIndex; i < currentPeriodIndex_; ++i) {
                     uint256 interestEarnedPerPeriod = (totalPTInterest * (ptDepositsFromPeriod[i] + ptAccumulated[i])) /
-                        ptBalancePreTransfer;
+                        recordedPTBalance;
                     ptAccumulated[i] += interestEarnedPerPeriod;
                     if (ptDepositsFromPeriod[i] > 0) {
                         ptRate[i] =
                             ((ptDepositsFromPeriod[i] + ptAccumulated[i]) * tokenScale) /
-                            ptDepositsFromPeriod[i];
+                            (ptDepositsFromPeriod[i]);
                     }
                 }
             }
@@ -240,6 +237,8 @@ contract VaultAPW is Guarded, IVault, Initializable {
         } else {
             IERC20(token).safeTransfer(user, amount);
         }
+
+        recordedPTBalance = IERC20(token).balanceOf(address(this));
 
         emit Exit(user, amount);
     }
