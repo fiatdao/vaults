@@ -199,6 +199,10 @@ contract VaultAPWTest is DSTest {
         pt.approve(address(vaultAPW), amount);
         pt.mint(address(this), amount);
         vaultAPW.enter(period, owner, amount);
+        uint256 fyBalance = fy2.balanceOf(address(vaultAPW));
+        uint256 ptBalance = pt.balanceOf(address(vaultAPW));
+        console.log("minting fyt", ptBalance - amount - fyBalance);
+        fy2.mint(address(vaultAPW), ptBalance - amount - fyBalance);
     }
 
     function test_enter_3_period_switch() public {
@@ -232,7 +236,7 @@ contract VaultAPWTest is DSTest {
         console.log("total 1", vaultAPW.ptDepositsFromPeriod(0) + vaultAPW.ptAccumulated(0));
         console.log("total 2", vaultAPW.ptDepositsFromPeriod(1) + vaultAPW.ptAccumulated(1));
         console.log("total 3", vaultAPW.ptDepositsFromPeriod(2) + vaultAPW.ptAccumulated(2));
-        console.log("total 4", vaultAPW.ptDepositsFromPeriod(2) + vaultAPW.ptAccumulated(3));
+        console.log("total 4", vaultAPW.ptDepositsFromPeriod(3) + vaultAPW.ptAccumulated(3));
         console.log("rate 1 ", vaultAPW.ptRate(0));
         console.log("rate 2 ", vaultAPW.ptRate(1));
         console.log("rate 3 ", vaultAPW.ptRate(2));
@@ -258,7 +262,7 @@ contract VaultAPWTest is DSTest {
         vault.exit(0, owner, amount);
         assertTrue(pt.balanceOf(owner) > amount);
         assertEq(pt.balanceOf(owner), (amount * vaultAPW.ptRate(0)) / vault.tokenScale());
-        console.log("pt withdraw balance", pt.balanceOf(owner));
+        assertEq(pt.balanceOf(owner), fy2.balanceOf(owner));
     }
 
     function test_enter_3_period_switch_then_exit_on_period_switch() public {
@@ -277,10 +281,21 @@ contract VaultAPWTest is DSTest {
         _periodSwitchAndEnter(owner, amount, 2, 2 * baseInterest);
         futureVault.setCurrentPeriodIndex(3);
         pt.setInterestAmount(3 * baseInterest);
+
+        uint256 fyBalance = fy2.balanceOf(address(vaultAPW));
+        uint256 ptBalance = pt.balanceOf(address(vaultAPW));
+        fy2.mint(address(vaultAPW), (ptBalance - fyBalance ) + (3 * baseInterest));
+
         vault.exit(0, owner, amount);
         assertTrue(pt.balanceOf(owner) > amount);
         assertEq(pt.balanceOf(owner), (amount * vaultAPW.ptRate(0)) / vault.tokenScale());
-        console.log("pt withdraw balance", pt.balanceOf(owner));
+        assertEq(pt.balanceOf(owner), fy2.balanceOf(owner));
+
+        vault.exit(1, owner, amount);
+        assertEq(pt.balanceOf(owner), fy2.balanceOf(owner));
+
+        vault.exit(2, owner, amount);
+        assertEq(pt.balanceOf(owner), fy2.balanceOf(owner));
     }
 
     function test_enter_period_switch_decreased_deposits(address owner, uint256 amount) public {
