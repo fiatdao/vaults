@@ -48,6 +48,7 @@ contract FutureVault {
     }
 
     function getFYTofPeriod(uint256 index) external view returns (address) {
+        console.log("get fy period of index", index);
         if (index == 1) return address(fy1);
         else return address(fy2);
     }
@@ -201,7 +202,6 @@ contract VaultAPWTest is DSTest {
         vaultAPW.enter(period, owner, amount);
         uint256 fyBalance = fy2.balanceOf(address(vaultAPW));
         uint256 ptBalance = pt.balanceOf(address(vaultAPW));
-        console.log("minting fyt", ptBalance - amount - fyBalance);
         fy2.mint(address(vaultAPW), ptBalance - amount - fyBalance);
     }
 
@@ -225,25 +225,43 @@ contract VaultAPWTest is DSTest {
         assertEq(pt.balanceOf(address(vaultAPW)), 4 * amount + baseInterest + 2 * baseInterest + 3 * baseInterest);
 
         // Verified balances with numbers calcualted here: https://docs.google.com/spreadsheets/d/12Lnzpr4z_18oRMMeITp1nz03pDZiy6ytMJsllzZ-qN8/edit#gid=0
-        console.log("deposits 1", vaultAPW.ptDepositsFromPeriod(0));
-        console.log("deposits 2", vaultAPW.ptDepositsFromPeriod(1));
-        console.log("deposits 3", vaultAPW.ptDepositsFromPeriod(2));
-        console.log("deposits 4", vaultAPW.ptDepositsFromPeriod(3));
-        console.log("accumulated 1", vaultAPW.ptAccumulated(0));
-        console.log("accumulated 2", vaultAPW.ptAccumulated(1));
-        console.log("accumulated 3", vaultAPW.ptAccumulated(2));
-        console.log("accumulated 4", vaultAPW.ptAccumulated(3));
-        console.log("total 1", vaultAPW.ptDepositsFromPeriod(0) + vaultAPW.ptAccumulated(0));
-        console.log("total 2", vaultAPW.ptDepositsFromPeriod(1) + vaultAPW.ptAccumulated(1));
-        console.log("total 3", vaultAPW.ptDepositsFromPeriod(2) + vaultAPW.ptAccumulated(2));
-        console.log("total 4", vaultAPW.ptDepositsFromPeriod(3) + vaultAPW.ptAccumulated(3));
-        console.log("rate 1 ", vaultAPW.ptRate(0));
-        console.log("rate 2 ", vaultAPW.ptRate(1));
-        console.log("rate 3 ", vaultAPW.ptRate(2));
-        console.log("rate 4 ", vaultAPW.ptRate(3));
+        assertEq(vaultAPW.ptDepositsFromPeriod(0), 100000000000000000000);
+        assertEq(vaultAPW.ptDepositsFromPeriod(1), 100000000000000000000);
+        assertEq(vaultAPW.ptDepositsFromPeriod(2), 100000000000000000000);
+        assertEq(vaultAPW.ptDepositsFromPeriod(3), 100000000000000000000);
+        assertEq(vaultAPW.ptAccumulated(0), 3014925373134328357);
+        assertEq(vaultAPW.ptAccumulated(1), 1994975616964681542);
+        assertEq(vaultAPW.ptAccumulated(2), 990099009900990099);
+        assertEq(vaultAPW.ptAccumulated(3), 0);
+        assertEq(vaultAPW.ptRate(0), 1030149253731343283);
+        assertEq(vaultAPW.ptRate(1), 1019949756169646815);
+        assertEq(vaultAPW.ptRate(2), 1009900990099009900);
+        assertEq(vaultAPW.ptRate(3), 0);
     }
 
     function test_enter_3_period_switch_then_exit() public {
+        uint256 amount = 100 * 10**18;
+        address owner = address(123456567889);
+
+        pt.approve(address(vault), amount);
+        pt.mint(address(this), amount);
+        vaultAPW.enter(0, owner, amount);
+        assertEq(pt.balanceOf(address(this)), 0);
+        assertEq(pt.balanceOf(address(vault)), amount);
+
+        uint256 baseInterest = amount / 100;
+
+        _periodSwitchAndEnter(owner, amount, 1, baseInterest);
+        _periodSwitchAndEnter(owner, amount, 2, 2 * baseInterest);
+        _periodSwitchAndEnter(owner, amount, 3, 3 * baseInterest);
+
+        vault.exit(0, owner, amount);
+        assertTrue(pt.balanceOf(owner) > amount);
+        assertEq(pt.balanceOf(owner), (amount * vaultAPW.ptRate(0)) / vault.tokenScale());
+        assertEq(pt.balanceOf(owner), fy2.balanceOf(owner));
+    }
+
+    function test_enter_3_period_switch_then_exit_recent_period() public {
         uint256 amount = 100 * 10**18;
         address owner = address(123456567889);
 
@@ -284,7 +302,7 @@ contract VaultAPWTest is DSTest {
 
         uint256 fyBalance = fy2.balanceOf(address(vaultAPW));
         uint256 ptBalance = pt.balanceOf(address(vaultAPW));
-        fy2.mint(address(vaultAPW), (ptBalance - fyBalance ) + (3 * baseInterest));
+        fy2.mint(address(vaultAPW), (ptBalance - fyBalance) + (3 * baseInterest));
 
         vault.exit(0, owner, amount);
         assertTrue(pt.balanceOf(owner) > amount);
@@ -463,7 +481,7 @@ contract VaultAPWTest is DSTest {
         vault.exit(0, address(this), amount);
     }
 
-    /*function test_enter_scales_amount_to_wad(uint8 decimals) public {
+    function test_enter_scales_amount_to_wad(uint8 decimals) public {
         if (decimals > MAX_DECIMALS) return;
 
         address owner = address(this);
@@ -512,15 +530,17 @@ contract VaultAPWTest is DSTest {
         );
 
         pt2.approve(address(vault), amount);
-        pt2.mint(address(vault), amount);
+        pt2.mint(address(owner), amount);
+        vault.enter(0, owner, amount);
 
+        fy2.mint(address(vault), amount);
         vault.exit(0, owner, amount);
 
-        MockProvider.CallData memory cd = codex.getCallData(0);
+        MockProvider.CallData memory cd = codex.getCallData(1);
         (, , , int256 sentAmount) = abi.decode(cd.arguments, (address, uint256, address, int256));
 
         // exit decreases the amount in Codex by that much
         int256 scaledAmount = int256(vanillaAmount) * 10**18 * -1;
         assertEq(sentAmount, scaledAmount);
-    }*/
+    }
 }
