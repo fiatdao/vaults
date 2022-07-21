@@ -273,7 +273,11 @@ contract VaultAPW is Guarded, IVault, Initializable {
         bool face
     ) external view override returns (uint256) {
         uint256 value = collybus.read(address(this), underlierToken, 0, (face) ? block.timestamp : maturity(0), net);
-        return (value * ptRate[tokenId]) / tokenScale;
+        if (ptRate[tokenId] > 0) {
+            return (value * ptRate[tokenId]) / tokenScale;
+        }
+        return value;
+        
     }
 
     /// ======== Shutdown ======== ///
