@@ -256,7 +256,8 @@ contract VaultAPW is Guarded, IVault, Initializable {
         uint256 /* tokenId */
     ) public view virtual override returns (uint256) {
         // APW Principal Tokens never expire and are automatically rolled to the next period
-        return 0;
+        // todo figure out correct way to handle maturity since collybus rate depends on it
+        return block.number + 1;
     }
 
     /// ======== Valuing Collateral ======== ///
